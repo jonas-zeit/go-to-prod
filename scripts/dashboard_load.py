@@ -12,7 +12,7 @@ import time
 
 import psycopg
 
-from refresh_service.db import connect
+from refresh_service.db import admin_connect as connect
 
 SLOW_THRESHOLD_MS = 2000
 
