@@ -63,10 +63,21 @@ def refresh_table(
     ).fetchone()
     if table is None:
         raise HTTPException(status_code=404, detail="table not found")
-    job = conn.execute(
-        "insert into jobs (table_id) values (%s) returning id", (table_id,)
-    ).fetchone()
-    return {"job_id": job["id"]}
+    # A queued job has not read the source yet, so it also covers this request.
+    # The loop covers a worker claiming that job between the two statements.
+    for _ in range(3):
+        job = conn.execute(
+            "insert into jobs (table_id) values (%s)"
+            " on conflict (table_id) where status = 'queued' do nothing"
+            " returning id",
+            (table_id,),
+        ).fetchone() or conn.execute(
+            "select id from jobs where table_id = %s and status = 'queued'",
+            (table_id,),
+        ).fetchone()
+        if job is not None:
+            return {"job_id": job["id"]}
+    raise HTTPException(status_code=503, detail="could not queue the refresh, retry")
 
 
 @app.get("/jobs/{job_id}")

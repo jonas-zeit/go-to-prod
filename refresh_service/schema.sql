@@ -17,9 +17,16 @@ create table if not exists derived_tables (
 create table if not exists jobs (
   id serial primary key,
   table_id int not null references derived_tables (id),
-  status text not null default 'queued',
+  status text not null default 'queued'
+    check (status in ('queued', 'running', 'done', 'failed')),
   created_at timestamptz not null default now(),
   started_at timestamptz,
   finished_at timestamptz,
   error text
 );
+
+-- At most one queued and one running job per derived table.
+create unique index if not exists jobs_one_queued_per_table
+  on jobs (table_id) where status = 'queued';
+create unique index if not exists jobs_one_running_per_table
+  on jobs (table_id) where status = 'running';
