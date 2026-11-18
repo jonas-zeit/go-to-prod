@@ -12,7 +12,7 @@ Status: prototype. Demoed end to end, not yet in production.
 - `refresh_service/worker.py`: polls for queued jobs and runs them
 - `refresh_service/rebuild.py`: rebuilds one derived table (`full` or `append` mode)
 - `refresh_service/schema.sql`: metadata tables (`tenants`, `derived_tables`, `jobs`)
-- `scripts/seed.py`: resets the database with three demo tenants
+- `scripts/seed.py`: creates three demo tenants
 - `scripts/dashboard_load.py`: simulates dashboards reading the derived tables
 
 Each tenant has its own Postgres schema holding its source and derived tables.
@@ -25,6 +25,9 @@ Each tenant has its own Postgres schema holding its source and derived tables.
     python -m scripts.seed                # prints the API tokens
     python -m scripts.dashboard_load      # leave running in a second terminal
 
+`scripts.seed` refuses to run when the database already has tenants. Pass
+`--reset` to delete them first.
+
 Request a refresh:
 
     curl -X POST localhost:8000/tables/1/refresh -H "Authorization: Bearer acme-token"
@@ -34,4 +37,7 @@ Worker logs: `docker compose logs -f worker`
 
 ## Test
 
-    pytest          # resets the database
+    pytest
+
+The tests need the Compose Postgres. They create and use their own database,
+`refresh_test`, and do not touch the demo data.

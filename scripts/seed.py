@@ -1,6 +1,14 @@
-"""Resets the database and creates demo tenants, source data and derived tables."""
+"""Creates demo tenants, source data and derived tables.
+
+Usage: python -m scripts.seed [--reset]
+
+--reset deletes all existing tenants and their schemas first.
+"""
 
 import os
+import sys
+
+from psycopg import sql
 
 from refresh_service.db import connect, init_schema
 from refresh_service.rebuild import rebuild
@@ -28,12 +36,20 @@ DERIVED_TABLES = [
 ]
 
 
-def seed(tenants: list[tuple[str, int]] = TENANTS) -> None:
+def seed(tenants: list[tuple[str, int]] = TENANTS, reset: bool = False) -> None:
     conn = connect()
     init_schema(conn)
+    existing = conn.execute("select schema_name from tenants").fetchall()
+    if existing and not reset:
+        raise SystemExit("the database already has tenants, pass --reset to delete them")
+    for tenant in existing:
+        conn.execute(
+            sql.SQL("drop schema if exists {} cascade").format(
+                sql.Identifier(tenant["schema_name"])
+            )
+        )
     conn.execute("truncate jobs, derived_tables, tenants restart identity cascade")
     for name, rows in tenants:
-        conn.execute(f"drop schema if exists {name} cascade")
         conn.execute(f"create schema {name}")
         conn.execute(
             f"create table {name}.orders as"
@@ -73,4 +89,4 @@ def seed(tenants: list[tuple[str, int]] = TENANTS) -> None:
 
 
 if __name__ == "__main__":
-    seed()
+    seed(reset="--reset" in sys.argv[1:])

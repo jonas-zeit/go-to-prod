@@ -1,19 +1,9 @@
-import pytest
 from fastapi.testclient import TestClient
 
 from refresh_service.api import app
-from refresh_service.db import connect
 from refresh_service.worker import run_once
-from scripts.seed import seed
 
 ACME = {"Authorization": "Bearer acme-token"}
-
-
-@pytest.fixture
-def conn():
-    seed([("acme", 1000)])
-    with connect() as conn:
-        yield conn
 
 
 def test_refresh_rebuilds_table(conn):
