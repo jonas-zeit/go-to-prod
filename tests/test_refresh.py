@@ -63,11 +63,13 @@ def test_unknown_token_is_rejected(conn):
     assert response.status_code == 401
 
 
-def test_failed_job_reports_the_error(conn):
+def test_failed_job_reports_the_error_and_keeps_the_old_rows(conn):
     conn.execute("alter table acme.orders rename column region to area")
     result = refresh_and_run(conn, ACME, 1)
     assert result["status"] == "failed"
     assert "region" in result["error"]
+    rows = conn.execute("select count(*) as n from acme.sales_by_region").fetchone()
+    assert rows["n"] == 3
 
 
 def test_two_workers_never_claim_the_same_job(conn):
@@ -117,3 +119,34 @@ def test_job_of_a_dead_worker_runs_again(conn):
     dead_worker.close()
     assert run_once(conn) is True
     assert job(ACME, job_id)["status"] == "done"
+
+
+def test_append_copies_each_row_once(conn):
+    def counts() -> dict:
+        return conn.execute(
+            "select count(*) as n, count(distinct id) as ids from acme.recent_events"
+        ).fetchone()
+
+    assert refresh_and_run(conn, ACME, 3)["status"] == "done"
+    assert counts() == {"n": 1000, "ids": 1000}
+
+    conn.execute("insert into acme.events values (5000, 'click', now())")
+    for _ in range(2):
+        assert refresh_and_run(conn, ACME, 3)["status"] == "done"
+    assert counts() == {"n": 1001, "ids": 1001}
+
+
+def test_refresh_does_not_wait_for_a_reader_or_replace_the_table(conn):
+    oid = "select 'acme.sales_by_region'::regclass::oid as oid"
+    before = conn.execute(oid).fetchone()
+    conn.execute("delete from acme.orders where region = 'apac'")
+
+    # An open transaction that has read the table, like a long report. It would
+    # block drop table, truncate and rename until it ends.
+    with connect() as reader, reader.transaction():
+        read = "select count(*) as n from acme.sales_by_region"
+        assert reader.execute(read).fetchone()["n"] == 3
+
+        assert refresh_and_run(conn, ACME, 1)["status"] == "done"
+        assert reader.execute(read).fetchone()["n"] == 2
+    assert conn.execute(oid).fetchone() == before

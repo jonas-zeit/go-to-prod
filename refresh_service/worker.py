@@ -81,10 +81,15 @@ def run_once(conn: psycopg.Connection) -> bool:
             (str(exc), job["id"]),
         )
     else:
-        conn.execute(
-            "update jobs set status = 'done', finished_at = now() where id = %s",
-            (job["id"],),
-        )
+        with conn.transaction():
+            conn.execute(
+                "update jobs set status = 'done', finished_at = now() where id = %s",
+                (job["id"],),
+            )
+            conn.execute(
+                "update derived_tables set last_refreshed_at = now() where id = %s",
+                (table["id"],),
+            )
         log.info("job %s: done", job["id"])
     # Unlock only after the final status is stored. If this connection ends
     # earlier, another worker finds the job running and unlocked and requeues it.
