@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: refresh
@@ -15,21 +16,26 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     command: uvicorn refresh_service.api:app --host 0.0.0.0 --port 8000
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/refresh
     ports:
       - "8000:8000"
+    healthcheck:
+      test: python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"
+      interval: 5s
+      retries: 5
     depends_on:
       db:
         condition: service_healthy
 
   worker:
     build: .
+    restart: unless-stopped
     command: python -m refresh_service.worker
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/refresh
-      PYTHONUNBUFFERED: "1"
     deploy:
       replicas: 2
     depends_on:

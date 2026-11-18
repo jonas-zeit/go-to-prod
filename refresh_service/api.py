@@ -32,6 +32,12 @@ def get_tenant(
     return tenant
 
 
+@app.get("/healthz")
+def healthz(conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    conn.execute("select 1")
+    return {"status": "ok"}
+
+
 @app.post("/tables")
 def create_table(
     body: CreateTableRequest,

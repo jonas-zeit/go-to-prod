@@ -21,7 +21,7 @@ Each tenant has its own Postgres schema holding its source and derived tables.
 
     docker compose up --build -d          # Postgres on :5433, API on :8000, 2 workers
     python3 -m venv .venv && source .venv/bin/activate
-    pip install -r requirements.txt
+    pip install -r requirements-dev.txt
     python -m scripts.seed                # prints the API tokens
     python -m scripts.dashboard_load      # leave running in a second terminal
 
