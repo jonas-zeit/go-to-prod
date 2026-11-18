@@ -72,7 +72,7 @@ def run_once(conn: psycopg.Connection) -> bool:
     ).fetchone()
     log.info("job %s: rebuilding %s.%s", job["id"], table["schema_name"], table["name"])
     try:
-        rebuild(conn, table)
+        rebuild(table)
     except Exception as exc:
         log.exception("job %s: failed", job["id"])
         conn.execute(

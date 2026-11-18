@@ -10,8 +10,9 @@ import sys
 
 from psycopg import sql
 
-from refresh_service.db import connect, init_schema
+from refresh_service.db import admin_connect, init_schema
 from refresh_service.rebuild import rebuild
+from refresh_service.tenants import provision_tenant
 
 TENANTS = [
     ("acme", int(os.environ.get("SEED_ROWS", 3_000_000))),
@@ -37,7 +38,7 @@ DERIVED_TABLES = [
 
 
 def seed(tenants: list[tuple[str, int]] = TENANTS, reset: bool = False) -> None:
-    conn = connect()
+    conn = admin_connect()
     init_schema(conn)
     existing = conn.execute("select schema_name from tenants").fetchall()
     if existing and not reset:
@@ -50,7 +51,9 @@ def seed(tenants: list[tuple[str, int]] = TENANTS, reset: bool = False) -> None:
         )
     conn.execute("truncate jobs, derived_tables, tenants restart identity cascade")
     for name, rows in tenants:
-        conn.execute(f"create schema {name}")
+        # Demo tokens are predictable on purpose. provision_tenant generates a
+        # random token when none is given.
+        provision_tenant(conn, name, token=f"{name}-token")
         conn.execute(
             f"create table {name}.orders as"
             " select i as id,"
@@ -67,9 +70,7 @@ def seed(tenants: list[tuple[str, int]] = TENANTS, reset: bool = False) -> None:
             " from generate_series(1, 1000) as i"
         )
         tenant = conn.execute(
-            "insert into tenants (name, schema_name, api_token)"
-            " values (%s, %s, %s) returning id",
-            (name, name, f"{name}-token"),
+            "select id from tenants where name = %s", (name,)
         ).fetchone()
         for table_name, mode, definition in DERIVED_TABLES:
             conn.execute(
@@ -84,7 +85,7 @@ def seed(tenants: list[tuple[str, int]] = TENANTS, reset: bool = False) -> None:
         " join tenants t on t.id = d.tenant_id order by d.id"
     ).fetchall()
     for table in tables:
-        rebuild(conn, table)
+        rebuild(table)
     print(f"built {len(tables)} derived tables")
 
 

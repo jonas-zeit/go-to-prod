@@ -1,14 +1,17 @@
-import psycopg
 from psycopg import sql
 
+from refresh_service.tenants import connect_as_tenant
 
-def rebuild(conn: psycopg.Connection, table: dict) -> None:
-    """Rebuilds one derived table.
+
+def rebuild(table: dict) -> None:
+    """Rebuilds one derived table on a connection authenticated as the tenant role.
 
     All statements run in one transaction. Readers see the previous rows until
     the commit, and no statement takes a lock that blocks readers.
     """
     target = sql.Identifier(table["schema_name"], table["name"])
+    # The definition is tenant-supplied SQL. It is safe to inline only because
+    # this connection can do nothing outside the tenant schema.
     source = sql.SQL("({}) as source").format(sql.SQL(table["definition"]))
     statements = [
         sql.SQL("create table if not exists {} as select * from {} with no data"),
@@ -27,6 +30,8 @@ def rebuild(conn: psycopg.Connection, table: dict) -> None:
         # every new read wait behind them.
         statements.append(sql.SQL("delete from {}"))
         statements.append(sql.SQL("insert into {} select * from {}"))
-    with conn.transaction():
+    with connect_as_tenant(table["schema_name"]) as conn:
         for statement in statements:
-            conn.execute(statement.format(target, source))
+            # prepare=True sends a single prepared statement. Postgres rejects
+            # a definition that contains more than one statement.
+            conn.execute(statement.format(target, source), prepare=True)

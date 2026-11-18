@@ -1,3 +1,14 @@
+# Demo stack. The passwords and the secret in this file are for local use only.
+x-service: &service
+  build: .
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgresql://refresh_service:refresh_service@db:5432/refresh
+    TENANT_ROLE_SECRET: demo-secret
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:16
@@ -8,36 +19,25 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - ./refresh_service/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./refresh_service/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./docker/demo-service-password.sql:/docker-entrypoint-initdb.d/02-demo-service-password.sql
     healthcheck:
       test: pg_isready -U postgres -d refresh
       interval: 2s
       retries: 30
 
   api:
-    build: .
-    restart: unless-stopped
+    <<: *service
     command: uvicorn refresh_service.api:app --host 0.0.0.0 --port 8000
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/refresh
     ports:
       - "8000:8000"
     healthcheck:
       test: python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"
       interval: 5s
       retries: 5
-    depends_on:
-      db:
-        condition: service_healthy
 
   worker:
-    build: .
-    restart: unless-stopped
+    <<: *service
     command: python -m refresh_service.worker
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/refresh
     deploy:
       replicas: 2
-    depends_on:
-      db:
-        condition: service_healthy
